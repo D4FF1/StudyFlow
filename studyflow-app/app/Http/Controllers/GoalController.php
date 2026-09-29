@@ -156,6 +156,64 @@ class GoalController extends Controller
             'order_index' => $goal->milestones()->count(),
         ]);
 
+        $this->recalculateGoalProgress($goal);
+
         return back()->with('success', 'Milestone added.');
+    }
+
+    public function toggleMilestone(Goal $goal, GoalMilestone $milestone): RedirectResponse
+    {
+        abort_unless($goal->user_id === auth()->id() && $milestone->goal_id === $goal->id, 403);
+
+        $milestone->update([
+            'completed' => ! $milestone->completed,
+        ]);
+
+        $this->recalculateGoalProgress($goal);
+
+        return back()->with('success', 'Milestone updated.');
+    }
+
+    public function updateMilestone(Request $request, Goal $goal, GoalMilestone $milestone): RedirectResponse
+    {
+        abort_unless($goal->user_id === auth()->id() && $milestone->goal_id === $goal->id, 403);
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'completed' => ['nullable', 'boolean'],
+        ]);
+
+        $milestone->update($validated);
+
+        $this->recalculateGoalProgress($goal);
+
+        return back()->with('success', 'Milestone updated.');
+    }
+
+    public function destroyMilestone(Goal $goal, GoalMilestone $milestone): RedirectResponse
+    {
+        abort_unless($goal->user_id === auth()->id() && $milestone->goal_id === $goal->id, 403);
+
+        $milestone->delete();
+
+        $this->recalculateGoalProgress($goal);
+
+        return back()->with('success', 'Milestone deleted.');
+    }
+
+    protected function recalculateGoalProgress(Goal $goal): void
+    {
+        $total = $goal->milestones()->count();
+        if ($total > 0) {
+            $completed = $goal->milestones()->where('completed', true)->count();
+            $percentage = (int) round(($completed / $total) * 100);
+            $goal->update([
+                'current_progress' => $completed,
+                'target' => $total,
+                'progress' => $percentage,
+                'status' => ($percentage >= 100) ? 'completed' : 'active',
+            ]);
+        }
     }
 }

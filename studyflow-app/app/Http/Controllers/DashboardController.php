@@ -28,10 +28,13 @@ class DashboardController extends Controller
 
         $todayTasks = $user->tasks()->orderBy('deadline')->take(6)->get();
         $priorityEngine = app(PriorityEngine::class);
-        $priorityTasks = $user->tasks()->where('status', '!=', 'completed')->orderBy('deadline')->get()->map(function ($task) use ($priorityEngine) {
+        $allActiveTasks = $user->tasks()->where('status', '!=', 'completed')->with('subject')->get()->map(function ($task) use ($priorityEngine) {
             $task->priorityMeta = $priorityEngine->calculate($task);
             return $task;
-        })->take(3);
+        });
+
+        $priorityTasks = $allActiveTasks->sortByDesc(fn ($t) => $t->priorityMeta['score'] ?? 0)->take(3)->values();
+        $nextBestTask = $priorityTasks->first();
 
         $weeklyProgress = [];
         for ($i = 6; $i >= 0; $i--) {
@@ -43,7 +46,7 @@ class DashboardController extends Controller
             ];
         }
 
-        $recentActivity = $user->tasks()->latest()->take(5)->get();
+        $recentActivity = $user->tasks()->with('subject')->latest()->take(5)->get();
 
         return view('dashboard', compact(
             'tasksToday',
@@ -53,6 +56,7 @@ class DashboardController extends Controller
             'upcomingDeadlines',
             'todayTasks',
             'priorityTasks',
+            'nextBestTask',
             'weeklyProgress',
             'recentActivity'
         ));

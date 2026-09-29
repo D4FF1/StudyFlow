@@ -11,18 +11,64 @@ class TaskController extends Controller
 {
     public function index(Request $request)
     {
-        $tasks = auth()->user()->tasks()->latest()->get();
+        $user = auth()->user();
+        $query = $user->tasks()->with('subject');
+
+        if ($request->filled('search')) {
+            $search = $request->input('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->input('status'));
+        }
+
+        if ($request->filled('priority')) {
+            $query->where('priority', strtolower($request->input('priority')));
+        }
+
+        if ($request->filled('subject_id')) {
+            $query->where('subject_id', $request->input('subject_id'));
+        }
+
+        if ($request->filled('deadline')) {
+            $deadlineFilter = $request->input('deadline');
+            if ($deadlineFilter === 'today') {
+                $query->whereDate('deadline', today());
+            } elseif ($deadlineFilter === 'week') {
+                $query->whereBetween('deadline', [now()->startOfDay(), now()->addDays(7)->endOfDay()]);
+            } elseif ($deadlineFilter === 'overdue') {
+                $query->where('deadline', '<', now())->where('status', '!=', 'completed');
+            } elseif ($deadlineFilter === 'upcoming') {
+                $query->where('deadline', '>=', now());
+            }
+        }
+
+        $tasks = $query->latest()->get();
 
         if ($request->expectsJson()) {
             return response()->json($tasks);
         }
 
-        return view('tasks.index', compact('tasks'));
+        $subjects = $user->subjects()->get();
+        $priorityEngine = app(\App\Services\PriorityEngine::class);
+        $tasks->each(function ($task) use ($priorityEngine) {
+            $task->priorityMeta = $priorityEngine->calculate($task);
+        });
+
+        $totalTasksCount = $user->tasks()->count();
+
+        return view('tasks.index', compact('tasks', 'subjects', 'totalTasksCount'));
     }
 
     public function create(): View
     {
-        return view('tasks.create');
+        $subjects = auth()->user()->subjects()->get();
+
+        return view('tasks.create', compact('subjects'));
     }
 
     public function store(Request $request)
@@ -67,18 +113,26 @@ class TaskController extends Controller
     {
         abort_unless($task->user_id === auth()->id(), 403);
 
+        $task->load('subject');
+        $priorityMeta = app(\App\Services\PriorityEngine::class)->calculate($task);
+
         if ($request->expectsJson()) {
-            return response()->json($task);
+            return response()->json([
+                'task' => $task,
+                'priorityMeta' => $priorityMeta,
+            ]);
         }
 
-        return view('tasks.show', compact('task'));
+        return view('tasks.show', compact('task', 'priorityMeta'));
     }
 
     public function edit(Task $task): View
     {
         abort_unless($task->user_id === auth()->id(), 403);
 
-        return view('tasks.edit', compact('task'));
+        $subjects = auth()->user()->subjects()->get();
+
+        return view('tasks.edit', compact('task', 'subjects'));
     }
 
     public function update(Request $request, Task $task)

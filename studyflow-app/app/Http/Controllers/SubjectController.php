@@ -11,7 +11,16 @@ class SubjectController extends Controller
 {
     public function index(Request $request)
     {
-        $subjects = auth()->user()->subjects()->with('tasks')->get();
+        $subjects = auth()->user()->subjects()->with(['tasks', 'studySessions'])->get();
+
+        $subjects->each(function ($subject) {
+            $total = $subject->tasks->count();
+            $completed = $subject->tasks->where('status', 'completed')->count();
+            $subject->total_tasks_count = $total;
+            $subject->completed_tasks_count = $completed;
+            $subject->completion_rate = $total > 0 ? (int) round(($completed / $total) * 100) : 0;
+            $subject->total_study_minutes = (int) ($subject->studySessions->whereNotNull('ended_at')->sum('duration_minutes') ?: ($subject->study_minutes ?? 0));
+        });
 
         if ($request->expectsJson()) {
             return response()->json($subjects);
@@ -47,14 +56,30 @@ class SubjectController extends Controller
     {
         abort_unless($subject->user_id === auth()->id(), 403);
 
-        $subject->load('tasks');
-        $progress = $subject->tasks()->count() ? (int) round(($subject->tasks()->where('status', 'completed')->count() / $subject->tasks()->count()) * 100) : 0;
+        $subject->load(['tasks', 'studySessions']);
+        $totalTasks = $subject->tasks()->count();
+        $completedTasksCount = $subject->tasks()->where('status', 'completed')->count();
+        $progress = $totalTasks ? (int) round(($completedTasksCount / $totalTasks) * 100) : 0;
+
+        $upcomingTasks = $subject->tasks()->where('status', '!=', 'completed')->orderBy('deadline')->get();
+        $completedTasks = $subject->tasks()->where('status', 'completed')->latest('completed_at')->take(10)->get();
+        $recentSessions = $subject->studySessions()->latest('started_at')->take(5)->get();
+        $totalStudyMinutes = (int) ($subject->studySessions()->whereNotNull('ended_at')->sum('duration_minutes') ?: ($subject->study_minutes ?? 0));
+
+        $stats = [
+            'total' => $totalTasks,
+            'completed' => $completedTasksCount,
+            'in_progress' => $subject->tasks()->where('status', 'in_progress')->count(),
+            'todo' => $subject->tasks()->where('status', 'todo')->count(),
+            'progress' => $progress,
+            'study_minutes' => $totalStudyMinutes,
+        ];
 
         if ($request->expectsJson()) {
-            return response()->json(['subject' => $subject, 'progress' => $progress]);
+            return response()->json(['subject' => $subject, 'progress' => $progress, 'stats' => $stats]);
         }
 
-        return view('subjects.show', compact('subject', 'progress'));
+        return view('subjects.show', compact('subject', 'progress', 'upcomingTasks', 'completedTasks', 'recentSessions', 'stats'));
     }
 
     public function edit(Subject $subject): View

@@ -25,6 +25,8 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/search', [\App\Http\Controllers\SearchController::class, 'index'])->name('search');
+
     Route::resource('tasks', TaskController::class);
     Route::post('/tasks/{task}/complete', [TaskController::class, 'complete'])->name('tasks.complete');
     Route::post('/tasks/{task}/reopen', [TaskController::class, 'reopen'])->name('tasks.reopen');
@@ -32,6 +34,9 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('subjects', SubjectController::class);
     Route::resource('goals', GoalController::class);
     Route::post('/goals/{goal}/milestones', [GoalController::class, 'storeMilestone'])->name('goals.milestones.store');
+    Route::post('/goals/{goal}/milestones/{milestone}/toggle', [GoalController::class, 'toggleMilestone'])->name('goals.milestones.toggle');
+    Route::patch('/goals/{goal}/milestones/{milestone}', [GoalController::class, 'updateMilestone'])->name('goals.milestones.update');
+    Route::delete('/goals/{goal}/milestones/{milestone}', [GoalController::class, 'destroyMilestone'])->name('goals.milestones.destroy');
 
     Route::get('/planner', [PlannerController::class, 'index'])->name('planner.index');
     Route::get('/planner/create', [PlannerController::class, 'create'])->name('planner.create');

@@ -12,12 +12,14 @@ class NotificationController extends Controller
     public function index(Request $request)
     {
         $notifications = auth()->user()->notifications()->latest()->get();
+        $unreadNotifications = $notifications->whereNull('read_at')->values();
+        $readNotifications = $notifications->whereNotNull('read_at')->values();
 
         if ($request->expectsJson()) {
             return response()->json($notifications);
         }
 
-        return view('notifications.index', compact('notifications'));
+        return view('notifications.index', compact('notifications', 'unreadNotifications', 'readNotifications'));
     }
 
     public function show(Request $request, Notification $notification)
