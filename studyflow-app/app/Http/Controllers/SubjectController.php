@@ -3,60 +3,98 @@
 namespace App\Http\Controllers;
 
 use App\Models\Subject;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
 
 class SubjectController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Auth::user()->subjects()->latest()->get());
+        $subjects = auth()->user()->subjects()->with('tasks')->get();
+
+        if ($request->expectsJson()) {
+            return response()->json($subjects);
+        }
+
+        return view('subjects.index', compact('subjects'));
+    }
+
+    public function create(): View
+    {
+        return view('subjects.create');
     }
 
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'external_id' => ['nullable', 'string', 'max:255'],
+        $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'color' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string'],
-            'study_minutes' => ['nullable', 'integer', 'min:0'],
+            'icon' => ['nullable', 'string', 'max:50'],
+            'color' => ['nullable', 'string', 'max:50'],
         ]);
 
-        $subject = Auth::user()->subjects()->create($data);
+        $subject = auth()->user()->subjects()->create($validated);
 
-        return response()->json($subject, 201);
+        if ($request->expectsJson()) {
+            return response()->json($subject, 201);
+        }
+
+        return redirect()->route('subjects.index')->with('success', 'Subject created successfully.');
     }
 
-    public function show(Subject $subject)
+    public function show(Request $request, Subject $subject)
     {
-        abort_unless($subject->user_id === Auth::id(), 403);
+        abort_unless($subject->user_id === auth()->id(), 403);
 
-        return response()->json($subject);
+        $subject->load('tasks');
+        $progress = $subject->tasks()->count() ? (int) round(($subject->tasks()->where('status', 'completed')->count() / $subject->tasks()->count()) * 100) : 0;
+
+        if ($request->expectsJson()) {
+            return response()->json(['subject' => $subject, 'progress' => $progress]);
+        }
+
+        return view('subjects.show', compact('subject', 'progress'));
+    }
+
+    public function edit(Subject $subject): View
+    {
+        abort_unless($subject->user_id === auth()->id(), 403);
+
+        return view('subjects.edit', compact('subject'));
     }
 
     public function update(Request $request, Subject $subject)
     {
-        abort_unless($subject->user_id === Auth::id(), 403);
+        abort_unless($subject->user_id === auth()->id(), 403);
 
-        $subject->update($request->validate([
-            'external_id' => ['nullable', 'string', 'max:255'],
-            'name' => ['sometimes', 'string', 'max:255'],
-            'color' => ['nullable', 'string', 'max:50'],
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'study_minutes' => ['nullable', 'integer', 'min:0'],
-        ]));
+            'icon' => ['nullable', 'string', 'max:50'],
+            'color' => ['nullable', 'string', 'max:50'],
+        ]);
 
-        return response()->json($subject);
+        $subject->update($validated);
+
+        if ($request->expectsJson()) {
+            return response()->json($subject->fresh());
+        }
+
+        return redirect()->route('subjects.index')->with('success', 'Subject updated successfully.');
     }
 
-    public function destroy(Subject $subject)
+    public function destroy(Request $request, Subject $subject)
     {
-        abort_unless($subject->user_id === Auth::id(), 403);
+        abort_unless($subject->user_id === auth()->id(), 403);
 
         $subject->delete();
 
-        return response()->json(['deleted' => true]);
+        if ($request->expectsJson()) {
+            return response()->json(['deleted' => true]);
+        }
+
+        return redirect()->route('subjects.index')->with('success', 'Subject deleted successfully.');
     }
 
     public function sync(Request $request)
@@ -65,15 +103,14 @@ class SubjectController extends Controller
         $saved = [];
 
         foreach ($items as $item) {
-            $externalId = $item['id'] ?? $item['external_id'] ?? null;
-            $subject = Auth::user()->subjects()->updateOrCreate(
-                ['external_id' => $externalId],
+            $subject = auth()->user()->subjects()->updateOrCreate(
+                ['external_id' => $item['id'] ?? $item['external_id'] ?? null],
                 [
-                    'external_id' => $externalId,
-                    'name' => $item['name'] ?? 'New subject',
-                    'color' => $item['color'] ?? '#4f8cff',
+                    'external_id' => $item['id'] ?? $item['external_id'] ?? null,
+                    'name' => $item['name'] ?? 'Untitled subject',
                     'description' => $item['description'] ?? null,
-                    'study_minutes' => $item['studyMinutes'] ?? $item['study_minutes'] ?? 0,
+                    'icon' => $item['icon'] ?? null,
+                    'color' => $item['color'] ?? null,
                 ]
             );
 

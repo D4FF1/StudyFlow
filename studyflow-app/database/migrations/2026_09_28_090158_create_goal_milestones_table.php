@@ -8,21 +8,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('subjects', function (Blueprint $table) {
+        Schema::create('goal_milestones', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->string('external_id')->nullable();
-            $table->string('name');
-            $table->string('icon')->nullable();
-            $table->string('color')->default('#4f8cff');
+            $table->foreignId('goal_id')->constrained()->cascadeOnDelete();
+            $table->string('title');
             $table->text('description')->nullable();
-            $table->unsignedInteger('study_minutes')->default(0);
+            $table->boolean('completed')->default(false);
+            $table->unsignedInteger('order_index')->default(0);
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('subjects');
+        Schema::dropIfExists('goal_milestones');
     }
 };

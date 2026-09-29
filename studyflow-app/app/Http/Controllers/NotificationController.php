@@ -3,58 +3,32 @@
 namespace App\Http\Controllers;
 
 use App\Models\Notification;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
 
 class NotificationController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Auth::user()->notifications()->latest()->get());
+        $notifications = auth()->user()->notifications()->latest()->get();
+
+        if ($request->expectsJson()) {
+            return response()->json($notifications);
+        }
+
+        return view('notifications.index', compact('notifications'));
     }
 
-    public function store(Request $request)
+    public function show(Request $request, Notification $notification)
     {
-        $data = $request->validate([
-            'external_id' => ['nullable', 'string', 'max:255'],
-            'type' => ['nullable', 'string', 'max:50'],
-            'message' => ['required', 'string'],
-            'read_at' => ['nullable', 'date'],
-        ]);
+        abort_unless($notification->user_id === auth()->id(), 403);
 
-        $notification = Auth::user()->notifications()->create($data);
+        if ($request->expectsJson()) {
+            return response()->json($notification);
+        }
 
-        return response()->json($notification, 201);
-    }
-
-    public function show(Notification $notification)
-    {
-        abort_unless($notification->user_id === Auth::id(), 403);
-
-        return response()->json($notification);
-    }
-
-    public function update(Request $request, Notification $notification)
-    {
-        abort_unless($notification->user_id === Auth::id(), 403);
-
-        $notification->update($request->validate([
-            'external_id' => ['nullable', 'string', 'max:255'],
-            'type' => ['nullable', 'string', 'max:50'],
-            'message' => ['sometimes', 'string'],
-            'read_at' => ['nullable', 'date'],
-        ]));
-
-        return response()->json($notification);
-    }
-
-    public function destroy(Notification $notification)
-    {
-        abort_unless($notification->user_id === Auth::id(), 403);
-
-        $notification->delete();
-
-        return response()->json(['deleted' => true]);
+        return response()->view('notifications.show', ['notification' => $notification]);
     }
 
     public function sync(Request $request)
@@ -63,13 +37,12 @@ class NotificationController extends Controller
         $saved = [];
 
         foreach ($items as $item) {
-            $externalId = $item['id'] ?? $item['external_id'] ?? null;
-            $notification = Auth::user()->notifications()->updateOrCreate(
-                ['external_id' => $externalId],
+            $notification = auth()->user()->notifications()->updateOrCreate(
+                ['external_id' => $item['id'] ?? $item['external_id'] ?? null],
                 [
-                    'external_id' => $externalId,
+                    'external_id' => $item['id'] ?? $item['external_id'] ?? null,
                     'type' => $item['type'] ?? 'info',
-                    'message' => $item['message'] ?? 'New notification',
+                    'message' => $item['message'] ?? 'Notification',
                     'read_at' => $item['readAt'] ?? $item['read_at'] ?? null,
                 ]
             );
@@ -78,5 +51,21 @@ class NotificationController extends Controller
         }
 
         return response()->json(['items' => $saved]);
+    }
+
+    public function markRead(Notification $notification): RedirectResponse
+    {
+        abort_unless($notification->user_id === auth()->id(), 403);
+
+        $notification->update(['read_at' => now()]);
+
+        return back()->with('success', 'Notification marked as read.');
+    }
+
+    public function markAllRead(): RedirectResponse
+    {
+        auth()->user()->notifications()->whereNull('read_at')->update(['read_at' => now()]);
+
+        return back()->with('success', 'All notifications marked as read.');
     }
 }

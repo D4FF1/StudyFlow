@@ -14,9 +14,12 @@ return new class extends Migration
             $table->string('external_id')->nullable();
             $table->string('title');
             $table->text('description')->nullable();
+            $table->unsignedInteger('target')->default(100);
+            $table->unsignedInteger('current_progress')->default(0);
             $table->unsignedInteger('progress')->default(0);
-            $table->date('target_date')->nullable();
-            $table->string('status')->default('On Track');
+            $table->date('deadline')->nullable();
+            $table->string('category')->default('study');
+            $table->string('status')->default('active');
             $table->timestamps();
         });
     }
